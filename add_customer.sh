@@ -115,15 +115,37 @@ EOF
 echo "Nginx konfigürasyon dosyası oluşturuldu: ${NGINX_CONF_FILE}"
 
 ########################################
-# 5. Reverse Proxy Container'ını Kontrol ve Yönet
+# 5. Nginx Reverse Proxy Container'ını Kontrol ve Yönet
 ########################################
-# Reverse proxy için docker-compose dosyası "nginx_proxy/docker-compose.yml" altında
+# Reverse proxy için docker-compose dosyasının olduğu dizin
 NGINX_COMPOSE_DIR="nginx_proxy"
 NGINX_COMPOSE_FILE="${NGINX_COMPOSE_DIR}/docker-compose.yml"
 
+# Eğer reverse proxy dizini yoksa oluşturup docker-compose dosyasını yazalım.
 if [ ! -d "${NGINX_COMPOSE_DIR}" ]; then
-  echo "Hata: ${NGINX_COMPOSE_DIR} dizini bulunamadı. Reverse proxy docker-compose dosyasını kontrol edin."
-  exit 1
+  echo "nginx_proxy dizini bulunamadı, oluşturuluyor..."
+  mkdir -p "${NGINX_COMPOSE_DIR}"
+  cat > "${NGINX_COMPOSE_FILE}" <<'EOF'
+version: "3.8"
+services:
+  reverse-proxy:
+    image: nginx:latest
+    container_name: reverse-proxy
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      # Göreceli yol kullanıyorsanız, burada doğru dizini belirtmeniz gerekir.
+      # Eğer repo kök dizininde "nginx_conf" klasörü varsa, göreceli yol ../nginx_conf şeklinde olabilir.
+      - ../nginx_conf:/etc/nginx/conf.d:ro
+    networks:
+      - wp_network
+
+networks:
+  wp_network:
+    external: true
+EOF
+  echo "Nginx reverse proxy docker-compose dosyası oluşturuldu: ${NGINX_COMPOSE_FILE}"
 fi
 
 # Reverse proxy container'ının çalışıp çalışmadığını kontrol edelim.
@@ -135,6 +157,7 @@ else
   docker exec reverse-proxy nginx -s reload
 fi
 
+echo "Reverse proxy güncellemesi tamamlandı. Lütfen DNS ayarlarınızın doğru olduğunu kontrol edin."
 echo ""
 echo "Tüm işlemler tamamlandı."
 echo "Müşteri '${CUSTOMER}' için WordPress ve DB container'ları çalışıyor."
