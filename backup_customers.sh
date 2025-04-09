@@ -1,11 +1,14 @@
 #!/bin/bash
-BACKUP_DIR="./backups/$(date +%Y%m%d_%H%M%S)"
-mkdir -p $BACKUP_DIR
+read -p "Müşteri adı: " CUSTOMER
+read -p "Yedek klasörü: " BACKUP_DIR
 
-for wp_container in $(docker ps --format '{{.Names}}' | grep wordpress_); do
-  customer=${wp_container#wordpress_}
-  docker run --rm --volumes-from $wp_container -v $BACKUP_DIR:/backup busybox tar czf /backup/${customer}_wp.tar.gz /var/www/html
-  docker exec db_${customer} sh -c 'exec mysqldump --all-databases -uroot -p"$MYSQL_ROOT_PASSWORD"' > $BACKUP_DIR/${customer}_db.sql
-done
+docker compose -f docker-compose-${CUSTOMER}.yml down
+docker compose -f docker-compose-${CUSTOMER}.yml up -d db_${CUSTOMER}
 
-echo "📦 Yedekleme tamamlandı: $BACKUP_DIR"
+docker exec -i db_${CUSTOMER} mysql -uroot -p"root_pass_${CUSTOMER}" < ${BACKUP_DIR}/${CUSTOMER}_db.sql
+
+docker run --rm --volumes-from wordpress_${CUSTOMER} -v ${BACKUP_DIR}:/backup busybox sh -c "rm -rf /var/www/html/* && tar xzf /backup/${CUSTOMER}_wp.tar.gz -C /"
+
+docker compose -f docker-compose-${CUSTOMER}.yml up -d
+
+echo "🔄 Müşteri '${CUSTOMER}' geri yüklendi."
