@@ -1,19 +1,18 @@
 #!/bin/bash
-# add_customer.sh
-# SSL destekli olarak yeni bir müşteri ekler:
-#   1) WP & DB container'larını oluşturur.
-#   2) Müşteriye özel docker-compose dosyasını üretir.
-#   3) Repo kökü altındaki ./nginx_conf dizininde, HTTP->HTTPS yönlendirme ve HTTPS sunumuyla
-#      müşteriye özel Nginx konfigürasyon dosyası oluşturur.
-#   4) Reverse proxy container'ını kontrol eder; çalışmıyorsa başlatır, çalışıyorsa konfig reload eder.
+# add_setup.sh
+# SSL destekli olarak yeni bir müşteri ekler.
+#   1) WordPress & DB container'larını oluşturur.
+#   2) Müşteri için docker-compose dosyasını üretir.
+#   3) Repo kökündeki ./nginx_conf dizininde müşteriye özel Nginx konfigürasyon dosyası oluşturur.
+#   4) Reverse proxy container'ını kontrol eder; çalışmıyorsa başlatır, çalışıyorsa reload eder.
+#   5) Ek olarak, isteğe bağlı otomatik SSL (Certbot) ile sertifika alır; istenirse manuel sertifika yüklenebilir.
 #
-# Reverse proxy docker-compose dosyası "nginx_proxy/docker-compose.yml" içinde,
-# absolute path kullanılarak host'taki nginx_conf ve nginx_ssl dizinleri container'a mount edilir.
+# Reverse proxy docker-compose dosyası "nginx_proxy/docker-compose.yml" içinde absolute path kullanılarak
+# host'taki /root/kohesoft/nginx_conf ve /root/kohesoft/nginx_ssl dizinleri container'a mount edilir.
 #
-# SSL: Her müşteri için /root/kohesoft/nginx_ssl dizininde, örneğin:
-#    - /root/kohesoft/nginx_ssl/<CUSTOMER>.crt
-#    - /root/kohesoft/nginx_ssl/<CUSTOMER>.key
-# dosyaları bulunmalı.
+# Her müşterinin SSL sertifika ve key dosyaları, origin sunucuda /etc/nginx/ssl altında
+# görünmelidir. Örneğin, müşteri adı "kohesoft" ise; dosyalar "kohesoft.crt" ve "kohesoft.key" olarak
+# kullanılacaktır.
 
 set -e
 
@@ -54,7 +53,7 @@ services:
     container_name: wordpress_${CUSTOMER}
     restart: always
     ports:
-      - "80${PORT_SUFFIX}:80"   # Örnek: 8001, 8002 gibi.
+      - "80${PORT_SUFFIX}:80"
     environment:
       WORDPRESS_DB_HOST: db_${CUSTOMER}:3306
       WORDPRESS_DB_USER: ${WP_DB_USER}
@@ -97,29 +96,28 @@ docker compose -f "${COMPOSE_FILE}" up -d
 ########################################
 # 4. Nginx Konfigürasyon Dosyası Oluştur (SSL Dahil)
 ########################################
-# Konfigürasyon dosyaları repo kökünde "nginx_conf" dizininde tutulur.
 NGINX_CONF_DIR="./nginx_conf"
 mkdir -p "${NGINX_CONF_DIR}"
 NGINX_CONF_FILE="${NGINX_CONF_DIR}/${CUSTOMER}.conf"
 
 cat > "${NGINX_CONF_FILE}" <<EOF
-# HTTP: Gelen tüm istekleri HTTPS'e yönlendirir
+# HTTP: Tüm gelen istekleri HTTPS'e yönlendirir
 server {
     listen 80;
     server_name ${DOMAIN};
     return 301 https://\$host\$request_uri;
 }
 
-# HTTPS: SSL sertifikalarıyla korumalı bağlantı ve WordPress proxy
+# HTTPS: SSL sertifikası ile güvenli bağlantı, WordPress'e proxy
 server {
     listen 443 ssl;
     server_name ${DOMAIN};
 
     ssl_certificate     /etc/nginx/ssl/${CUSTOMER}.crt;
     ssl_certificate_key /etc/nginx/ssl/${CUSTOMER}.key;
-    ssl_session_cache shared:SSL:1m;
+    ssl_session_cache   shared:SSL:1m;
     ssl_session_timeout 10m;
-    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
 
     location / {
@@ -135,11 +133,10 @@ echo "Nginx konfigürasyon dosyası oluşturuldu: ${NGINX_CONF_FILE}"
 ########################################
 # 5. Reverse Proxy Container'ını Kontrol ve Yönet (SSL Dahil)
 ########################################
-# Reverse proxy için docker-compose dosyası "nginx_proxy/docker-compose.yml" altında.
 NGINX_COMPOSE_DIR="nginx_proxy"
 NGINX_COMPOSE_FILE="${NGINX_COMPOSE_DIR}/docker-compose.yml"
 
-# Eğer reverse proxy dizini yoksa oluştur ve docker-compose dosyasını yaz.
+# Eğer reverse proxy dizini yoksa oluşturup docker-compose dosyasını yazalım.
 if [ ! -d "${NGINX_COMPOSE_DIR}" ]; then
   echo "nginx_proxy dizini bulunamadı, oluşturuluyor..."
   mkdir -p "${NGINX_COMPOSE_DIR}"
@@ -166,7 +163,6 @@ EOF
   echo "Nginx reverse proxy docker-compose dosyası oluşturuldu: ${NGINX_COMPOSE_FILE}"
 fi
 
-# Reverse proxy container'ının çalışıp çalışmadığını kontrol edelim.
 if ! docker ps --format '{{.Names}}' | grep -q "^reverse-proxy\$"; then
   echo "Nginx reverse proxy container'ı çalışmıyor, başlatılıyor..."
   (cd "${NGINX_COMPOSE_DIR}" && docker compose up -d)
@@ -175,8 +171,35 @@ else
   docker exec reverse-proxy nginx -s reload
 fi
 
+########################################
+# 6. SSL Sertifikası Kurulumu
+########################################
+# Bu adımda, otomatik SSL (Certbot) ile sertifika almak isterseniz aşağıdaki bölümü kullanabilirsiniz.
+# Eğer otomatik SSL istemiyorsanız, "n" cevabı verip manuel olarak sertifika dosyalarını
+# /root/kohesoft/nginx_ssl dizinine yükleyebilirsiniz.
+read -p "Otomatik SSL sertifikası almak ister misiniz? (y/n): " AUTO_SSL
+if [ "$AUTO_SSL" = "y" ]; then
+    echo "Certbot ile SSL sertifikası alınıyor..."
+    # Standalone mod kullanılıyor. Port 80/443 temporary olarak Certbot tarafından kullanılacaktır.
+    # E-posta adresinizi girin:
+    read -p "Certbot e-posta adresiniz: " EMAIL
+    # Certbot komutunu çalıştırın; bu işlem origin sunucunuzda root (reverse proxy) üzerinde çalışacaktır.
+    certbot certonly --standalone -d ${DOMAIN} --non-interactive --agree-tos -m ${EMAIL}
+    # Let’s Encrypt sertifikaları genellikle /etc/letsencrypt/live/${DOMAIN}/ içinde bulunur.
+    # Sertifika ve anahtar dosyalarını host dizinine kopyalıyoruz.
+    cp /etc/letsencrypt/live/${DOMAIN}/fullchain.pem /root/kohesoft/nginx_ssl/${CUSTOMER}.crt
+    cp /etc/letsencrypt/live/${DOMAIN}/privkey.pem /root/kohesoft/nginx_ssl/${CUSTOMER}.key
+    chmod 600 /root/kohesoft/nginx_ssl/${CUSTOMER}.key
+    echo "Otomatik SSL sertifikası başarıyla alındı ve yüklendi."
+else
+    echo "Manuel SSL yüklemesi yapmak için, lütfen /root/kohesoft/nginx_ssl dizinine sertifika (örn. ${CUSTOMER}.crt) ve anahtar (örn. ${CUSTOMER}.key) dosyalarını yükleyin."
+fi
+
+# Reverse proxy container'da yapılandırma reload edelim, böylece SSL değişiklikleri aktif olsun.
+docker exec reverse-proxy nginx -s reload
+
 echo ""
 echo "✅ Tüm işlemler tamamlandı."
 echo "Müşteri '${CUSTOMER}' için WordPress & DB container'ları çalışıyor."
-echo "Domain '${DOMAIN}' reverse proxy (SSL dahil) sayesinde yönlendirilecektir."
-echo "Not: Cloudflare SSL ayarlarını, 'Full' ya da 'Full (strict)' modunda yapılandırdığınızdan emin olun."
+echo "Domain '${DOMAIN}', reverse proxy (SSL dahil) sayesinde yönlendirilecektir."
+echo "Lütfen Cloudflare SSL/TLS ayarlarını (örneğin, 'Full (strict)') kontrol edin."
