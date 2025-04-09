@@ -1,19 +1,31 @@
 #!/bin/bash
 # add_customer.sh
-# Yeni müşteri eklemek için; WP & DB container'larını oluşturur, docker-compose dosyası ve Nginx konfigürasyonunu üretir.
+# Bu script:
+#   1) Docker network 'wp_network' kontrol eder, yoksa oluşturur.
+#   2) Müşteri bilgilerini alır: müşteri adı, port son eki, domain.
+#   3) Müşteri için WP & DB container'larını tanımlayan docker-compose dosyasını oluşturur ve ayağa kaldırır.
+#   4) Repo kökü altındaki ./nginx_conf dizininde müşteriye özel Nginx konfigürasyon dosyası oluşturur.
+#   5) Reverse proxy container'ını (nginx_proxy) çalışmıyorsa başlatır, çalışıyorsa konfig reload eder.
+#
+# Reverse proxy docker-compose dosyası "nginx_proxy/docker-compose.yml" altında bulunur.
+# Eğer volume mount konusunda sorun yaşarsan, bu dosyadaki volumes ayarını absolute veya doğru göreceli yol ile düzenleyin.
 
 set -e
 
-# 1. Docker network kontrolü
+########################################
+# 1. Docker Network Kontrolü
+########################################
 NETWORK_NAME="wp_network"
 if ! docker network ls --format '{{.Name}}' | grep -q "^${NETWORK_NAME}\$"; then
-  echo "Docker network '${NETWORK_NAME}' oluşturuluyor..."
+  echo "Docker network '${NETWORK_NAME}' bulunamadı. Oluşturuluyor..."
   docker network create ${NETWORK_NAME}
 else
-  echo "Docker network '${NETWORK_NAME}' zaten var."
+  echo "Docker network '${NETWORK_NAME}' zaten mevcut."
 fi
 
-# 2. Müşteri bilgilerini al
+########################################
+# 2. Müşteri Bilgilerini Al
+########################################
 read -p "Müşteri adını girin (örn: musteri1): " CUSTOMER
 read -p "Port son ekini girin (örn: 01, 02 vs.): " PORT_SUFFIX
 read -p "Domain ismini girin (örn: musteri1.ornekdomain.com): " DOMAIN
@@ -24,7 +36,10 @@ WP_DB_USER="wp_user_${CUSTOMER}"
 WP_DB_PASS="wp_pass_${CUSTOMER}"
 ROOT_PASS="root_pass_${CUSTOMER}"
 
-# 3. Docker Compose dosyasını oluştur (WP & DB)
+########################################
+# 3. Docker Compose Dosyasını Oluştur (WP & DB)
+########################################
+# Dosya adında boşluk olmamasına dikkat edelim.
 COMPOSE_FILE="docker-compose-${CUSTOMER}.yml"
 
 cat > "${COMPOSE_FILE}" <<EOF
@@ -35,7 +50,7 @@ services:
     container_name: wordpress_${CUSTOMER}
     restart: always
     ports:
-      - "80${PORT_SUFFIX}:80"
+      - "80${PORT_SUFFIX}:80"   # Örnek: 8001, 8002 gibi.
     environment:
       WORDPRESS_DB_HOST: db_${CUSTOMER}:3306
       WORDPRESS_DB_USER: ${WP_DB_USER}
@@ -72,11 +87,16 @@ networks:
 EOF
 
 echo "Docker Compose dosyası '${COMPOSE_FILE}' oluşturuldu."
+echo "WordPress ve DB container'ları başlatılıyor..."
 docker compose -f "${COMPOSE_FILE}" up -d
 
-# 4. Nginx konfigürasyon dosyası oluştur (nginx_conf altına)
+########################################
+# 4. Nginx Konfigürasyon Dosyası Oluştur
+########################################
+# Nginx konfigürasyon dosyalarını barındıracağımız dizin
 NGINX_CONF_DIR="./nginx_conf"
 mkdir -p "${NGINX_CONF_DIR}"
+
 NGINX_CONF_FILE="${NGINX_CONF_DIR}/${CUSTOMER}.conf"
 
 cat > "${NGINX_CONF_FILE}" <<EOF
@@ -93,4 +113,31 @@ server {
 EOF
 
 echo "Nginx konfigürasyon dosyası oluşturuldu: ${NGINX_CONF_FILE}"
-echo "Müşteri ${CUSTOMER} başarıyla eklenmiştir."
+
+########################################
+# 5. Reverse Proxy Container'ını Kontrol ve Yönet
+########################################
+# Reverse proxy için docker-compose dosyası "nginx_proxy/docker-compose.yml" altında
+NGINX_COMPOSE_DIR="nginx_proxy"
+NGINX_COMPOSE_FILE="${NGINX_COMPOSE_DIR}/docker-compose.yml"
+
+if [ ! -d "${NGINX_COMPOSE_DIR}" ]; then
+  echo "Hata: ${NGINX_COMPOSE_DIR} dizini bulunamadı. Reverse proxy docker-compose dosyasını kontrol edin."
+  exit 1
+fi
+
+# Reverse proxy container'ının çalışıp çalışmadığını kontrol edelim.
+if ! docker ps --format '{{.Names}}' | grep -q "^reverse-proxy\$"; then
+  echo "Nginx reverse proxy container'ı çalışmıyor, başlatılıyor..."
+  (cd "${NGINX_COMPOSE_DIR}" && docker compose up -d)
+else
+  echo "Nginx reverse proxy container'ı zaten çalışıyor, konfigürasyon reload ediliyor..."
+  docker exec reverse-proxy nginx -s reload
+fi
+
+echo ""
+echo "Tüm işlemler tamamlandı."
+echo "Müşteri '${CUSTOMER}' için WordPress ve DB container'ları çalışıyor."
+echo "Domain '${DOMAIN}' reverse proxy sayesinde yönlendirilecektir."
+echo "Cloudflare A kaydının sunucunun public IP'sine ayarlandığından emin olun."
+
