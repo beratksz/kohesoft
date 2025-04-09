@@ -17,9 +17,10 @@ else
   echo "Docker network '${NETWORK_NAME}' zaten mevcut."
 fi
 
-read -p "Müşteri adını girin (\u00f6rn: musteri1): " CUSTOMER
-read -p "Port son ekini girin (\u00f6rn: 01,02 vs.): " PORT_SUFFIX
-read -p "Domain ismini girin (\u00f6rn: musteri1.com): " DOMAIN
+read -p "Müşteri adını girin (örn: musteri1): " CUSTOMER
+read -p "Port son ekini girin (örn: 01, 02 vs.): " PORT_SUFFIX
+read -p "Domain ismini girin (örn: musteri1.com): " DOMAIN
+
 
 WP_DB_NAME="wp_db_${CUSTOMER}"
 WP_DB_USER="wp_user_${CUSTOMER}"
