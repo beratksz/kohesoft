@@ -81,6 +81,8 @@ NGINX_CONF_DIR="./nginx_conf"
 mkdir -p "${NGINX_CONF_DIR}"
 NGINX_CONF_FILE="${NGINX_CONF_DIR}/${CUSTOMER}.conf"
 
+mkdir -p /root/kohesoft/nginx_ssl
+
 CERT_PATH="/etc/nginx/ssl/${CUSTOMER}.crt"
 KEY_PATH="/etc/nginx/ssl/${CUSTOMER}.key"
 
