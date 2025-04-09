@@ -1,22 +1,17 @@
 # Customer Manager
 
 Bu repo, çoklu müşteri yönetimi için aşağıdaki işlemleri otomatikleştiren scriptler içerir:
-customer-manager/
-├── README.md
-├── add_customer.sh         # Yeni müşteri ekle: WP, DB container'larını oluşturur ve Nginx konfigürasyonunu yazar
-├── archive_customer.sh     # Soft delete: Müşterinin container'larını durdurur, konfigürasyon dosyalarını arşivler
-├── delete_customer.sh      # Hard delete: Müşteriyi sistemden kalıcı olarak siler (container, volume, konfigürasyon)
-├── backup_customers.sh     # Tüm müşterilerin WP & DB volume'larını yedekler
-├── restore_backup.sh       # Belirli bir müşterinin yedeğini geri yükler (volume içerisine restore)
-├── download_drive.sh       # Bulut (örneğin, Google Drive) üzerindeki yedek dosyalarını indirir
-├── upload_drive.sh         # Yerel yedekleri bulut ortamına yükler (rclone ile)
-├── nginx_conf/             # Reverse proxy Nginx konfigürasyon dosyaları burada yer alır
-├── archived_customers/     # Soft delete edilen müşterilerin docker-compose ve Nginx conf dosyaları burada saklanır
-└── backups/                # Yedek dosyalarının (tar.gz) konulacağı ana dizin
-
-## Kurulum
-- Bu repo içindeki scriptleri çalıştırmadan önce Docker, Docker Compose ve (isteğe bağlı) rclone kurulu olmalıdır.
-- `nginx_conf`, `archived_customers` ve `backups` dizinlerini repo kökünde saklayın.
+- **add_customer.sh**: Yeni müşteri ekler (WordPress, DB container'ları ve Nginx konfigürasyonu oluşturur).
+- **archive_customer.sh**: Müşteriyi soft-delete yöntemiyle arşivler (container'lar durdurulur, konfigürasyonlar arşivlenir).
+- **delete_customer.sh**: Müşteriyi sistemden kalıcı siler (container, volume ve konfigürasyonlar kaldırılır).
+- **backup_customers.sh**: Tüm müşterilerin WordPress ve DB volume yedeklerini alır.
+- **restore_backup.sh**: Belirli bir müşterinin volume yedeklerini geri yükler.
+- **upload_drive.sh**: Yerel yedekleri rclone ile bulut ortamına yükler.
+- **download_drive.sh**: Bulut ortamındaki yedekleri yerel sisteme indirir.
 
 ## Kullanım
-Her bir script interaktif olarak müşteri bilgilerini alır; dokümantasyon için script içeriğine bakılabilir.
+- Docker, Docker Compose ve (isteğe bağlı) rclone kurulu olmalıdır.
+- Repo yapısındaki `nginx_conf`, `archived_customers` ve `backups` dizinlerinin düzenli saklanması gereklidir.
+- Her script interaktif olarak müşteri bilgilerini alır. Script içeriğine bakarak daha fazla detay öğrenebilirsiniz.
+
+## Repository Yapısı
