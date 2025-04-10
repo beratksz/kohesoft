@@ -48,7 +48,7 @@ services:
       - db_${CUSTOMER}
 
   db_${CUSTOMER}:
-    image: mysql:5.7
+    image: mysql:8
     container_name: db_${CUSTOMER}
     restart: always
     environment:
