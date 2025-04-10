@@ -1,0 +1,49 @@
+# nginx_proxy/docker-compose.yml
+version: "3.8"
+
+services:
+  nginx-proxy:
+    image: jwilder/nginx-proxy:latest
+    container_name: nginx-proxy
+    restart: always
+    # Burada önemli olan, host'un 80 ve 443 portlarını proxy'ye map etmemiz:
+    ports:
+      - "80:80"
+      - "443:443"
+    # Let’s Encrypt companion, otomatik konfigürasyon için Docker socket'e ihtiyaç duyar
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      # Bu üç volume, nginx konfigürasyonu ve sertifika dosyaları için paylaşılır
+      - proxy_confd:/etc/nginx/conf.d
+      - proxy_vhostd:/etc/nginx/vhost.d
+      - proxy_html:/usr/share/nginx/html
+      # Sertifikaları saklayacağımız volume (okuma/yazma izni gerekli)
+      - proxy_certs:/etc/nginx/certs
+    networks:
+      - wp_network
+
+  letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: letsencrypt
+    restart: always
+    depends_on:
+      - nginx-proxy
+    volumes:
+      # Docker socket, companion'ın konteynerları takip edebilmesi için
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Sertifika dosyalarının paylaşımı
+      - proxy_certs:/etc/nginx/certs
+      - proxy_vhostd:/etc/nginx/vhost.d
+      - proxy_html:/usr/share/nginx/html
+    networks:
+      - wp_network
+
+volumes:
+  proxy_confd:
+  proxy_vhostd:
+  proxy_html:
+  proxy_certs:
+
+networks:
+  wp_network:
+    external: true
