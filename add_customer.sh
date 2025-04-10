@@ -10,17 +10,17 @@
 set -e
 
 NETWORK_NAME="wp_network"
+echo "[INFO] Docker network kontrol ediliyor..."
 if ! docker network ls --format '{{.Name}}' | grep -q "^${NETWORK_NAME}$"; then
-  echo "Docker network '${NETWORK_NAME}' bulunamadı. Oluşturuluyor..."
+  echo "[INFO] Docker network '${NETWORK_NAME}' bulunamadı, oluşturuluyor..."
   docker network create ${NETWORK_NAME}
 else
-  echo "Docker network '${NETWORK_NAME}' zaten mevcut."
+  echo "[OK] Docker network '${NETWORK_NAME}' zaten mevcut."
 fi
 
 read -p "Müşteri adını girin (örn: musteri1): " CUSTOMER
 read -p "Port son ekini girin (örn: 01, 02 vs.): " PORT_SUFFIX
 read -p "Domain ismini girin (örn: musteri1.com): " DOMAIN
-
 
 WP_DB_NAME="wp_db_${CUSTOMER}"
 WP_DB_USER="wp_user_${CUSTOMER}"
@@ -73,8 +73,8 @@ networks:
     external: true
 EOF
 
-echo "Docker Compose dosyası '${COMPOSE_FILE}' oluşturuldu."
-echo "WordPress ve DB container'ı başlatılıyor..."
+echo "[OK] Docker Compose dosyası '${COMPOSE_FILE}' oluşturuldu."
+echo "[INFO] WordPress ve DB container'ı başlatılıyor..."
 docker compose -f "${COMPOSE_FILE}" up -d
 
 NGINX_CONF_DIR="./nginx_conf"
@@ -89,7 +89,7 @@ KEY_PATH="/etc/nginx/ssl/${CUSTOMER}.key"
 if [[ -f "/root/kohesoft/nginx_ssl/${CUSTOMER}.crt" && -f "/root/kohesoft/nginx_ssl/${CUSTOMER}.key" ]]; then
   SSL_BLOCK="ssl_certificate     ${CERT_PATH};\n    ssl_certificate_key ${KEY_PATH};\n    ssl_session_cache   shared:SSL:1m;\n    ssl_session_timeout 10m;\n    ssl_ciphers         HIGH:!aNULL:!MD5;\n    ssl_prefer_server_ciphers on;"
 else
-  echo "Uyarı: ${CUSTOMER} için SSL sertifikası bulunamadı."
+  echo "[WARN] ${CUSTOMER} için SSL sertifikası bulunamadı."
   read -p "Otomatik SSL sertifikası almak ister misiniz? (y/n): " AUTO_SSL
   if [ "$AUTO_SSL" = "y" ]; then
     read -p "Certbot e-posta adresiniz: " EMAIL
@@ -130,14 +130,40 @@ cat >> "${NGINX_CONF_FILE}" <<EOF
 }
 EOF
 
-echo "Nginx konfigürasyon dosyası oluşturuldu: ${NGINX_CONF_FILE}"
+echo "[OK] Nginx konfigürasyon dosyası oluşturuldu: ${NGINX_CONF_FILE}"
+
+if [ ! -d "nginx_proxy" ]; then
+  echo "[INFO] nginx_proxy dizini yok, oluşturuluyor ve docker-compose.yml ekleniyor."
+  mkdir -p nginx_proxy
+  cat > nginx_proxy/docker-compose.yml <<EOF
+version: "3.8"
+services:
+  reverse-proxy:
+    image: nginx:latest
+    container_name: reverse-proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /root/kohesoft/nginx_conf:/etc/nginx/conf.d:ro
+      - /root/kohesoft/nginx_ssl:/etc/nginx/ssl:ro
+    networks:
+      - wp_network
+
+networks:
+  wp_network:
+    external: true
+EOF
+fi
 
 if ! docker ps --format '{{.Names}}' | grep -q "^reverse-proxy$"; then
-  echo "Nginx reverse proxy container'ı başlatılıyor..."
+  echo "[INFO] Nginx reverse proxy container'ı başlatılıyor..."
   docker compose -f nginx_proxy/docker-compose.yml up -d
 else
+  echo "[INFO] Reverse proxy reload ediliyor..."
   docker exec reverse-proxy nginx -s reload
 fi
 
-echo "\n✅ Tüm işlemler tamamlandı. ${CUSTOMER} aktif."
+echo -e "\n\xE2\x9C\x85 Tüm işlemler tamamlandı. ${CUSTOMER} aktif."
 echo "Cloudflare SSL ayarlarını kontrol etmeyi unutma."
