@@ -4,23 +4,62 @@ set -e
 NETWORK_NAME="wp_network"
 echo "[INFO] Docker network kontrol ediliyor..."
 if ! docker network ls --format '{{.Name}}' | grep -q "^${NETWORK_NAME}$"; then
-  echo "[INFO] Docker network '${NETWORK_NAME}' bulunamadı, oluşturuluyor..."
+  echo "[INFO] Docker ağı '${NETWORK_NAME}' oluşturuluyor..."
   docker network create ${NETWORK_NAME}
 else
-  echo "[OK] Docker network '${NETWORK_NAME}' mevcut."
+  echo "[OK] Docker ağı zaten mevcut."
 fi
 
-read -p "Müşteri adını girin (örn: musteri1): " CUSTOMER
-read -p "Domain ismini girin (örn: musteri1.com): " DOMAIN
+read -p "👤 Müşteri adı (örn: musteri1): " CUSTOMER
+read -p "🌍 Domain (örn: musteri1.com): " DOMAIN
 
-# Veritabanı için rastgele ya da sabit user/pass
+echo "🔐 SSL türünü seçin:"
+echo "1) Let's Encrypt (ücretsiz)"
+echo "2) Manuel SSL (crt/key/ca-bundle)"
+read -p "Seçimin (1/2): " SSL_TYPE
+
+# DB Bilgileri
 WP_DB_NAME="wp_db_${CUSTOMER}"
 WP_DB_USER="wp_user_${CUSTOMER}"
 WP_DB_PASS="wp_pass_${CUSTOMER}"
 ROOT_PASS="root_pass_${CUSTOMER}"
-
 COMPOSE_FILE="docker-compose-${CUSTOMER}.yml"
 
+# Sertifika ayarları
+CERT_LINE=""
+if [[ "$SSL_TYPE" == "1" ]]; then
+  CERT_LINE=$(cat <<EOF
+      VIRTUAL_HOST: "${DOMAIN}"
+      LETSENCRYPT_HOST: "${DOMAIN}"
+      LETSENCRYPT_EMAIL: "admin@${DOMAIN}"
+EOF
+)
+elif [[ "$SSL_TYPE" == "2" ]]; then
+  echo "📄 Sertifika dosyasının tam yolu (kohesoft.crt):"
+  read -rp "> " CERT_FILE
+  echo "🔑 Özel anahtar dosyası yolu (kohesoft.key):"
+  read -rp "> " KEY_FILE
+  echo "📎 CA bundle dosyası yolu (ca-bundle.crt):"
+  read -rp "> " BUNDLE_FILE
+
+  CERT_DIR="./nginx/certs/${DOMAIN}"
+  mkdir -p "${CERT_DIR}"
+  cp "$CERT_FILE" "${CERT_DIR}/cert.pem"
+  cp "$KEY_FILE" "${CERT_DIR}/privkey.pem"
+  cp "$BUNDLE_FILE" "${CERT_DIR}/chain.pem"
+
+  CERT_LINE=$(cat <<EOF
+      VIRTUAL_HOST: "${DOMAIN}"
+      VIRTUAL_PORT: "80"
+      CERT_NAME: "${DOMAIN}"
+EOF
+)
+else
+  echo "❌ Geçersiz SSL seçimi. Çıkılıyor."
+  exit 1
+fi
+
+# Compose dosyasını yaz
 cat > "${COMPOSE_FILE}" <<EOF
 version: '3.8'
 
@@ -32,10 +71,7 @@ services:
     expose:
       - "80"
     environment:
-      VIRTUAL_HOST: "${DOMAIN}"
-      LETSENCRYPT_HOST: "${DOMAIN}"
-      LETSENCRYPT_EMAIL: "admin@${DOMAIN}"
-
+$CERT_LINE
       WORDPRESS_DB_HOST: "db_${CUSTOMER}:3306"
       WORDPRESS_DB_USER: "${WP_DB_USER}"
       WORDPRESS_DB_PASSWORD: "${WP_DB_PASS}"
@@ -71,8 +107,13 @@ networks:
 EOF
 
 echo "[OK] Docker Compose dosyası '${COMPOSE_FILE}' oluşturuldu."
-echo "[INFO] WordPress ve DB container'ları başlatılıyor..."
+
+echo "[INFO] Container'lar başlatılıyor..."
 docker compose -f "${COMPOSE_FILE}" up -d
 
-echo "[INFO] Reverse-proxy ve Let’s Encrypt companion'ın çalıştığından emin olun."
-echo -e "\n✅ Tüm işlemler tamamlandı. '${CUSTOMER}' (Domain: ${DOMAIN}) eklendi."
+echo -e "\n✅ '${CUSTOMER}' başarıyla eklendi (Domain: ${DOMAIN})"
+if [[ "$SSL_TYPE" == "1" ]]; then
+  echo "📢 Let's Encrypt sertifikası companion tarafından otomatik alınacak."
+else
+  echo "📢 Manuel sertifikalar yüklendi: ./nginx/certs/${DOMAIN}/"
+fi
