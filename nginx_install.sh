@@ -8,7 +8,7 @@ echo "🔧 Gerekli klasörler oluşturuluyor..."
 mkdir -p ./nginx/conf.d ./nginx/vhost.d ./nginx/html ./nginx/certs ./nginx/dhparam
 
 if [ ! -f ./nginx/dhparam/dhparam.pem ]; then
-  echo "🔐 dhparam.pem dosyası oluşturuluyor (bu birkaç dakika sürebilir)..."
+echo "⏳ Bu işlem sistem performansına bağlı olarak 1–10 dakika sürebilir. Lütfen bekleyin..."
   openssl dhparam -out ./nginx/dhparam/dhparam.pem 2048
 else
   echo "✅ dhparam.pem zaten mevcut."
@@ -46,6 +46,7 @@ services:
     environment:
       - NGINX_PROXY_CONTAINER=nginx-proxy
       - DEFAULT_EMAIL=admin@kohesoft.com
+      - TRUST_DOWNSTREAM_PROXY=false
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./nginx/certs:/etc/nginx/certs
