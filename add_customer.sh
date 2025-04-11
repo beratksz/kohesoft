@@ -32,6 +32,7 @@ if [[ "$SSL_TYPE" == "1" ]]; then
       VIRTUAL_HOST: "${DOMAIN}"
       LETSENCRYPT_HOST: "${DOMAIN}"
       LETSENCRYPT_EMAIL: "admin@${DOMAIN}"
+      CERT_NAME: "${DOMAIN}"
 EOF
 )
 elif [[ "$SSL_TYPE" == "2" ]]; then
@@ -44,8 +45,9 @@ elif [[ "$SSL_TYPE" == "2" ]]; then
 
   CERT_DIR="./nginx/certs/${DOMAIN}"
   mkdir -p "${CERT_DIR}"
+
   cp "$CERT_FILE" "${CERT_DIR}/cert.pem"
-  cp "$KEY_FILE" "${CERT_DIR}/privkey.pem"
+  cp "$KEY_FILE" "${CERT_DIR}/key.pem"
   cp "$BUNDLE_FILE" "${CERT_DIR}/chain.pem"
 
   CERT_LINE=$(cat <<EOF
@@ -59,7 +61,7 @@ else
   exit 1
 fi
 
-# Compose dosyasını yaz
+# Docker Compose dosyası oluştur
 cat > "${COMPOSE_FILE}" <<EOF
 version: '3.8'
 
@@ -117,3 +119,7 @@ if [[ "$SSL_TYPE" == "1" ]]; then
 else
   echo "📢 Manuel sertifikalar yüklendi: ./nginx/certs/${DOMAIN}/"
 fi
+
+# Opsiyonel: Nginx reload
+echo "[INFO] Nginx-proxy yeniden yükleniyor..."
+docker exec nginx-proxy nginx -s reload || true
