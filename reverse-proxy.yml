@@ -8,12 +8,15 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - TRUST_DOWNSTREAM_PROXY=false
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
       - ./nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/vhost.d:/etc/nginx/vhost.d
       - ./nginx/html:/usr/share/nginx/html
-      - ./nginx/certs:/etc/nginx/certs
+      - ./nginx/certs:/etc/nginx/certs:rw
+      - ./nginx/dhparam:/etc/nginx/dhparam:ro
     networks:
       - wp_network
 
@@ -26,11 +29,13 @@ services:
     environment:
       - NGINX_PROXY_CONTAINER=nginx-proxy
       - DEFAULT_EMAIL=admin@kohesoft.com
+      - ACME_CA_URI=https://acme-v02.api.letsencrypt.org/directory
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./nginx/certs:/etc/nginx/certs
+      - ./nginx/certs:/etc/nginx/certs:rw
       - ./nginx/vhost.d:/etc/nginx/vhost.d
       - ./nginx/html:/usr/share/nginx/html
+      - ./nginx/dhparam:/etc/nginx/dhparam:ro
     networks:
       - wp_network
 
