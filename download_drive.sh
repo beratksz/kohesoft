@@ -1,13 +1,27 @@
 #!/bin/bash
 # download_drive.sh
-# Bu script, rclone kullanarak bulut ortamındaki yedekleri (örneğin, Google Drive) yerel backups klasörüne indirir.
+# Rclone ile bulut yedekleri yerel ./backups klasörüne indirir
 
-set -e
+set -euo pipefail
 
 BACKUP_ROOT="./backups"
-DESTINATION="mydrive:/customer_backups"  # Rclone remote isminiz ve hedef klasör
+SOURCE="mydrive:/customer_backups"
+LOG_FILE="./logs/download_$(date +%F_%H-%M-%S).log"
 
-echo "Bulut ortamındaki backup'lar ${DESTINATION}'dan yerel ${BACKUP_ROOT} klasörüne indiriliyor..."
-rclone copy "${DESTINATION}" "${BACKUP_ROOT}" --progress
+# Log klasörünü oluştur
+mkdir -p "$(dirname "$LOG_FILE")"
+mkdir -p "$BACKUP_ROOT"
 
-echo "Download işlemi tamamlandı. Yedekler ${BACKUP_ROOT} dizininde yer alıyor."
+echo "⏬ Yedek indirme işlemi başlatılıyor..." | tee -a "$LOG_FILE"
+
+# Rclone bağlantı kontrolü
+if ! rclone lsd "$SOURCE" > /dev/null 2>&1; then
+  echo "❌ Bağlantı hatası: '${SOURCE}' bulunamadı veya erişilemiyor." | tee -a "$LOG_FILE"
+  exit 1
+fi
+
+# İndirme işlemi
+echo "📥 '${SOURCE}' → '${BACKUP_ROOT}'" | tee -a "$LOG_FILE"
+rclone copy "$SOURCE" "$BACKUP_ROOT" --progress --log-file="$LOG_FILE" --log-level=INFO
+
+echo "✅ İndirme tamamlandı. Log dosyası: $LOG_FILE"
