@@ -1,35 +1,50 @@
 #!/bin/bash
 # delete_customer.sh
-# Belirtilen müşteriyi sistemden kalıcı olarak siler.
-# Container'lar, konfigürasyon dosyaları ve (opsiyonel) volume'lar tamamen kaldırılır.
+# Belirtilen müşterinin WordPress + DB container'larını, konfigürasyon dosyalarını
+# ve isteğe bağlı olarak volume'ları sistemden kalıcı olarak siler.
 
-set -e
+set -euo pipefail
 
-read -p "Kalıcı olarak silmek istediğiniz müşterinin adını girin (örn: musteri1): " CUSTOMER
+read -rp "❗ Kalıcı olarak silinecek müşteri adı (örn: musteri1): " CUSTOMER
+
 COMPOSE_FILE="docker-compose-${CUSTOMER}.yml"
-NGINX_CONF_FILE="nginx_conf/${CUSTOMER}.conf"
+NGINX_CONF_FILE="./nginx_conf/${CUSTOMER}.conf"
 
-echo "Müşteri '${CUSTOMER}' kalıcı olarak siliniyor..."
+echo -e "\n⚠️  Müşteri '${CUSTOMER}' silinmek üzere. İşlem geri alınamaz."
 
-# Container'ları durdur ve kaldır (volume'lar dahil --volumes)
-if [ -f "${COMPOSE_FILE}" ]; then
-    docker compose -f "${COMPOSE_FILE}" down --volumes
-    rm -f "${COMPOSE_FILE}"
+# 1. Container'ları kaldır
+if [[ -f "${COMPOSE_FILE}" ]]; then
+  echo "🛑 Container'lar durduruluyor ve siliniyor..."
+  docker compose -f "${COMPOSE_FILE}" down --volumes
+  rm -f "${COMPOSE_FILE}"
+  echo "🧾 Compose dosyası silindi: ${COMPOSE_FILE}"
 else
-    echo "Uyarı: Docker Compose dosyası bulunamadı."
+  echo "⚠️ Compose dosyası bulunamadı: ${COMPOSE_FILE}"
 fi
 
-# Nginx konfigürasyon dosyasını sil
-if [ -f "${NGINX_CONF_FILE}" ]; then
-    rm -f "${NGINX_CONF_FILE}"
+# 2. NGINX reverse proxy konfigürasyonu
+if [[ -f "${NGINX_CONF_FILE}" ]]; then
+  rm -f "${NGINX_CONF_FILE}"
+  echo "🧹 NGINX config silindi: ${NGINX_CONF_FILE}"
+else
+  echo "⚠️ NGINX config dosyası bulunamadı: ${NGINX_CONF_FILE}"
 fi
 
-# Volume'ları silmek için ek kontrol
-echo "Müşteri ile ilişkili volume'ları görüntüleyin:"
-docker volume ls | grep "${CUSTOMER}"
-read -p "Volume'ları silmek istiyor musunuz? (y/n): " CONFIRM
-if [ "$CONFIRM" = "y" ]; then
-    docker volume rm $(docker volume ls | awk "/${CUSTOMER}/ {print \$2}")
+# 3. İlişkili volume'ları listele ve kullanıcıya sor
+echo -e "\n📦 İlişkili volume'lar:"
+docker volume ls --format '{{.Name}}' | grep "${CUSTOMER}" || echo "(bulunamadı)"
+
+read -rp "🚨 Volume'ları da silmek istiyor musunuz? (y/n): " CONFIRM
+if [[ "$CONFIRM" == "y" ]]; then
+  VOLUMES=$(docker volume ls --format '{{.Name}}' | grep "${CUSTOMER}" || true)
+  if [[ -n "$VOLUMES" ]]; then
+    echo "$VOLUMES" | xargs docker volume rm
+    echo "🗑️ Volume'lar silindi."
+  else
+    echo "⚠️ Silinecek volume bulunamadı."
+  fi
+else
+  echo "⏩ Volume'lar korunuyor."
 fi
 
-echo "Müşteri '${CUSTOMER}' kalıcı olarak sistemden silindi."
+echo -e "\n✅ '${CUSTOMER}' tamamen silindi.\n"
