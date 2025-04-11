@@ -1,41 +1,62 @@
 #!/bin/bash
 # backup_customers.sh
-# Tüm müşterilerin WP & DB volume yedeklerini alır.
-# Her müşteri için backups/<müşteri>/ altında tar.gz formatında yedekler oluşturur.
+# Tüm müşterilerin WordPress ve DB volume'larını timestamp'li .tar.gz olarak yedekler.
+# Yedekler ./backups/<müşteri>/<volume>_tarih_saat.tar.gz formatında tutulur.
 
-set -e
+set -euo pipefail
 
 BACKUP_ROOT="./backups"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 mkdir -p "$BACKUP_ROOT"
 
-# Mevcut dizinde docker-compose-*.yml dosyalarını tarar
+# Docker volume var mı kontrolü
+check_volume_exists() {
+  local vol=$1
+  docker volume ls --format '{{.Name}}' | grep -q "^${vol}$"
+}
+
+echo -e "\n📦 Yedekleme işlemi başlatıldı: $TIMESTAMP\n"
+
+# docker-compose-*.yml taranıyor
+shopt -s nullglob
 for file in docker-compose-*.yml; do
-    CUSTOMER=$(basename "$file")
-    CUSTOMER=${CUSTOMER#docker-compose-}
-    CUSTOMER=${CUSTOMER%.yml}
+  CUSTOMER="${file#docker-compose-}"
+  CUSTOMER="${CUSTOMER%.yml}"
+  echo "🧾 Müşteri: $CUSTOMER"
 
-    echo "Müşteri: $CUSTOMER için yedekleme yapılıyor..."
-    CUSTOMER_BACKUP_DIR="$BACKUP_ROOT/$CUSTOMER"
-    mkdir -p "$CUSTOMER_BACKUP_DIR"
+  CUSTOMER_BACKUP_DIR="${BACKUP_ROOT}/${CUSTOMER}"
+  mkdir -p "${CUSTOMER_BACKUP_DIR}"
 
-    WP_VOLUME="wordpress_data_${CUSTOMER}"
-    WP_BACKUP_FILE="${WP_VOLUME}_${TIMESTAMP}.tar.gz"
-    echo "  WordPress volume yedekleniyor: $WP_VOLUME"
+  # WordPress Volume
+  WP_VOL="wordpress_data_${CUSTOMER}"
+  WP_FILE="${WP_VOL}_${TIMESTAMP}.tar.gz"
+
+  if check_volume_exists "$WP_VOL"; then
+    echo "  📝 WordPress verisi yedekleniyor..."
     docker run --rm \
-       -v "${WP_VOLUME}":/volume \
-       -v "$CUSTOMER_BACKUP_DIR":/backup \
-       alpine sh -c "cd /volume && tar czf /backup/$(basename "$WP_BACKUP_FILE") ."
+      -v "${WP_VOL}:/volume" \
+      -v "${CUSTOMER_BACKUP_DIR}:/backup" \
+      alpine sh -c "cd /volume && tar czf /backup/${WP_FILE} ."
+  else
+    echo "  ⚠️ Volume bulunamadı: $WP_VOL"
+  fi
 
-    DB_VOLUME="db_data_${CUSTOMER}"
-    DB_BACKUP_FILE="${DB_VOLUME}_${TIMESTAMP}.tar.gz"
-    echo "  DB volume yedekleniyor: $DB_VOLUME"
+  # MySQL Volume
+  DB_VOL="db_data_${CUSTOMER}"
+  DB_FILE="${DB_VOL}_${TIMESTAMP}.tar.gz"
+
+  if check_volume_exists "$DB_VOL"; then
+    echo "  📝 DB verisi yedekleniyor..."
     docker run --rm \
-       -v "${DB_VOLUME}":/volume \
-       -v "$CUSTOMER_BACKUP_DIR":/backup \
-       alpine sh -c "cd /volume && tar czf /backup/$(basename "$DB_BACKUP_FILE") ."
+      -v "${DB_VOL}:/volume" \
+      -v "${CUSTOMER_BACKUP_DIR}:/backup" \
+      alpine sh -c "cd /volume && tar czf /backup/${DB_FILE} ."
+  else
+    echo "  ⚠️ Volume bulunamadı: $DB_VOL"
+  fi
 
-    echo "  $CUSTOMER için yedekleme tamamlandı. Yedekler: $CUSTOMER_BACKUP_DIR"
+  echo "✅ Yedekleme tamamlandı: ${CUSTOMER_BACKUP_DIR}"
+  echo "--------------------------------------------------"
 done
 
-echo "Tüm yedekleme işlemleri tamamlandı."
+echo -e "\n🎉 Tüm yedekleme işlemleri başarıyla tamamlandı!\n"
