@@ -9,13 +9,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      # Companion'ın hangi containerların hangi domain istediğini görebilmesi için:
       - /var/run/docker.sock:/tmp/docker.sock:ro
-      # Aşağıdaki volume'lar da Nginx config, sertifikalar vb. için
-      - proxy_confd:/etc/nginx/conf.d
-      - proxy_vhostd:/etc/nginx/vhost.d
-      - proxy_html:/usr/share/nginx/html
-      - proxy_certs:/etc/nginx/certs
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/vhost.d:/etc/nginx/vhost.d
+      - ./nginx/html:/usr/share/nginx/html
+      - ./nginx/certs:/etc/nginx/certs
     networks:
       - wp_network
 
@@ -25,24 +23,16 @@ services:
     restart: always
     depends_on:
       - nginx-proxy
-    # Burada environment kısmı kritik:
     environment:
       - NGINX_PROXY_CONTAINER=nginx-proxy
-      # istersen şu da eklenebilir:
       - DEFAULT_EMAIL=admin@kohesoft.com
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - proxy_certs:/etc/nginx/certs
-      - proxy_vhostd:/etc/nginx/vhost.d
-      - proxy_html:/usr/share/nginx/html
+      - ./nginx/certs:/etc/nginx/certs
+      - ./nginx/vhost.d:/etc/nginx/vhost.d
+      - ./nginx/html:/usr/share/nginx/html
     networks:
       - wp_network
-
-volumes:
-  proxy_confd:
-  proxy_vhostd:
-  proxy_html:
-  proxy_certs:
 
 networks:
   wp_network:
