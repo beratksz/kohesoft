@@ -62,3 +62,8 @@ Her işlem sonrası log veya bilgilendirme terminale yazdırılır. restore_back
 
 🧠 Geliştirici Notu
 Bu sistem bir SaaS altyapısı olarak yapılandırılabilir. İleride müşteri alanlarını subdomain bazlı ayırmak, monitoring/log sistemi entegre etmek veya admin paneli geliştirmek mümkündür. Kodlar temiz, modüler ve shell script ile devops sürecine uygundur.
+
+NOT: yazım hatası veren .sh lara 
+sudo apt install dos2unix
+dos2unix <.sh>
+
