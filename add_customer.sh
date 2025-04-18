@@ -101,7 +101,9 @@ $CERT_LINE
 
 volumes:
   wordpress_data_${CUSTOMER}:
+    name: wordpress_data_${CUSTOMER}
   db_data_${CUSTOMER}:
+    name: db_data_${CUSTOMER}
 
 networks:
   ${NETWORK_NAME}:
